@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validPriority(priority) {
+      return priority in ['Low', 'Medium', 'High'];
+    }
+
+    function validStatus(status) {
+      return status in ['Pending', 'In Progress', 'Completed'];
+    }
+
+    function validTask() {
+      return request.resource.data.keys().hasOnly([
+        'id',
+        'title',
+        'startTime',
+        'endTime',
+        'priority',
+        'status',
+        'why',
+        'order',
+        'blockLabel',
+        'blockRank',
+        'createdAt',
+        'updatedAt'
+      ])
+      && request.resource.data.title is string
+      && request.resource.data.title.size() > 0
+      && request.resource.data.title.size() <= 160
+      && request.resource.data.startTime is string
+      && request.resource.data.endTime is string
+      && validPriority(request.resource.data.priority)
+      && validStatus(request.resource.data.status)
+      && request.resource.data.order is number
+      && request.resource.data.blockRank is number;
+    }
+
+    match /users/{userId} {
+      allow read, create, update: if isOwner(userId);
+      allow delete: if false;
+
+      match /tasks/{taskId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && validTask();
+        allow delete: if isOwner(userId);
+      }
+
+      match /timeBlocks/{blockId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.label is string
+          && request.resource.data.rank is number
+          && request.resource.data.startHour is number
+          && request.resource.data.endHour is number;
+        allow delete: if isOwner(userId);
+      }
+
+      match /focusSessions/{sessionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.taskId is string
+          && request.resource.data.taskTitle is string
+          && request.resource.data.secondsFocused is number;
+        allow update, delete: if false;
+      }
+
+      match /backups/{backupId} {
+        allow read, create: if isOwner(userId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}
